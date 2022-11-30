@@ -1,15 +1,32 @@
 import json
+import queue
 import re
+import threading
+import uuid
 from xml.dom.minidom import parseString
 
+import requests
 from django.http import HttpResponse
 from django.shortcuts import render
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 from shodan import Shodan
-import requests
-# Create your views here.
 
 from JetbrainsServerFinder import settings
+
+
+# Create your views here.
+
+
+class Mythread(threading.Thread):
+    def __init__(self, name, q):
+        threading.Thread.__init__(self)
+        self.name = name
+        self.q = q
+
+    def run(self):
+        print("Start thread: " + self.name)
+        find_server(self.name, self.q)
+        print("Exit thread: " + self.name)
 
 
 @xframe_options_sameorigin
@@ -17,38 +34,75 @@ def index(request):
     return render(request, 'index.html')
 
 
+exit_flag = 0
+queue_lock = threading.Lock()
+work_queue = queue.Queue()
+resp = {}
+
+
 def getserverlist(request):
     try:
+        server_list = []
+        global exit_flag, resp
+        exit_flag = 0
+        resp = {"total": 0, "data": []}
         api = Shodan(settings.APIKEY)
         result = api.search('Location: https://account.jetbrains.com/fls-auth')
         url = "{protocol}://{ip}:{port}"
-        resp = {"total": 0, "data": []}
-        id = 1
         for server in result["matches"]:
             if "account.jetbrains.com" in server["data"]:
                 protocol = "http"
                 if "ssl" in server:
                     protocol = "https"
-                '''print(url.format(
-                    protocol=protocol,
-                    ip=server["ip_str"],
-                    port=server["port"],
-                    position=translator.translate(str(server["location"]["country_name"]))
-                ))'''
                 address = url.format(
                     protocol=protocol,
                     ip=server["ip_str"],
                     port=server["port"])
-                if checkvalid(address):
-                    resp["data"].append(dict(id=id, address=address,
-                                             location=server["location"]["country_name"],
-                                             status='存活验证 √ 激活验证 √'))
-                    id += 1
+                server_list.append([address, server["location"]["country_name"]])
+        work_queue.maxsize = len(server_list)
+        threads = []
+        # 创建新线程
+        for active_server in server_list:
+            thread = Mythread(active_server, work_queue)
+            thread.start()
+            threads.append(thread)
+        # 填充队列
+        queue_lock.acquire()
+        for s in server_list:
+            work_queue.put(s)
+        queue_lock.release()
+        # 等待队列清空
+        while not work_queue.empty():
+            pass
+        # 通知线程是时候退出
+        exit_flag = 1
+        # 等待所有线程完成
+        for t in threads:
+            t.join()
+        print(resp)
+        print("Exit main thread")
         resp.update({'total': len(resp['data'])})
-        resp["code"] = 0
+        resp.update({'code': 0})
         return HttpResponse(json.dumps(resp), content_type='application/json')
     except Exception as error:
         return HttpResponse(json.dumps({'code': 1}), content_type='application/json')
+
+
+def find_server(thread_name, q):
+    global exit_flag, queue_lock, work_queue, resp
+    while not exit_flag:
+        queue_lock.acquire()
+        if not work_queue.empty():
+            data = q.get()
+            queue_lock.release()
+            print("%s processing %s" % (thread_name, data))
+            if checkvalid(data[0]):
+                resp["data"].append(dict(id=str(uuid.uuid4()), address=data[0],
+                                         location=data[1],
+                                         status='存活验证 √ 激活验证 √'))
+        else:
+            queue_lock.release()
+        # time.sleep(1)
 
 
 def checkvalid(host):

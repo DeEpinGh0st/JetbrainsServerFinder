@@ -39,13 +39,13 @@ python manage.py runserver
 ![](https://raw.githubusercontent.com/DeEpinGh0st/BlogOSS/main/aticles/2022/11/29/202211291943755.png)
 ## 截图
 
-![](https://raw.githubusercontent.com/DeEpinGh0st/BlogOSS/main/aticles/2022/11/29/202211291948542.png)
+![](https://raw.githubusercontent.com/DeEpinGh0st/BlogOSS/main/aticles/2022/11/29/202211301537522.png)
 
 
 ## TODO
 
  - Docker
- - Mutilthread
+ - ~~Mutilthread~~(已完成)
 
 
 ## 致谢
