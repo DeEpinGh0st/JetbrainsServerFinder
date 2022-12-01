@@ -79,10 +79,10 @@ def getserverlist(request):
         # 等待所有线程完成
         for t in threads:
             t.join()
-        print(resp)
         print("Exit main thread")
         resp.update({'total': len(resp['data'])})
         resp.update({'code': 0})
+        print(resp)
         return HttpResponse(json.dumps(resp), content_type='application/json')
     except Exception as error:
         return HttpResponse(json.dumps({'code': 1}), content_type='application/json')
